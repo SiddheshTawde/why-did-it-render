@@ -1,5 +1,5 @@
 {
-  "name": "why-did-it-render",
+  "name": "@SiddheshTawde/-did-it-render",
   "version": "1.0.0",
   "description": "A tiny dev-only React hook that logs exactly which props changed and caused a re-render — no heavy profiler required.",
   "type": "module",
