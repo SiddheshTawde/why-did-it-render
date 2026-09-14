@@ -28,26 +28,52 @@ interface ChangeEntry {
   referenceOnly: boolean;
 }
 
-function isDeepEqual(a: unknown, b: unknown): boolean {
+/**
+ * Structural deep-equal that (unlike JSON.stringify comparison):
+ * - ignores object key order
+ * - treats an explicit `undefined` value differently from a missing key... 
+ *   actually treats both consistently since we walk the union of keys
+ * - doesn't choke on values JSON.stringify would drop (undefined, functions)
+ */
+function isDeepEqual(a: unknown, b: unknown, seen = new Map<object, object>()): boolean {
   if (Object.is(a, b)) return true;
+
   if (typeof a !== typeof b) return false;
   if (typeof a !== 'object' || a === null || b === null) return false;
 
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    // Circular refs or non-serializable values (functions, symbols) —
-    // fall back to treating them as different.
-    return false;
+  // Guard against circular references.
+  const seenMatch = seen.get(a as object);
+  if (seenMatch) return seenMatch === b;
+  seen.set(a as object, b as object);
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    return a.every((item, i) => isDeepEqual(item, b[i], seen));
   }
+
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+
+  const aRecord = a as PropsRecord;
+  const bRecord = b as PropsRecord;
+  const allKeys = new Set([...Object.keys(aRecord), ...Object.keys(bRecord)]);
+
+  for (const key of allKeys) {
+    if (!isDeepEqual(aRecord[key], bRecord[key], seen)) return false;
+  }
+  return true;
 }
 
 function isProdByDefault(): boolean {
   try {
-    // Works under bundlers (Vite/webpack/Next statically replace this
-    // expression at build time) and under Node directly. Guarded with
-    // typeof so it never throws in environments without a `process` global.
-    return typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+    // Deliberately written as the exact literal `process.env.NODE_ENV`
+    // (no optional chaining) so bundlers that do a textual
+    // find/replace on that expression (webpack DefinePlugin, Next.js,
+    // etc.) can statically inline and dead-code-eliminate this branch.
+    // The typeof guard keeps it safe in environments with no `process`.
+    return typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
   } catch {
     return false;
   }
@@ -76,14 +102,16 @@ export function useWhyDidYouUpdate(
   } = options;
 
   const previousProps = useRef<PropsRecord | undefined>(undefined);
+  // Counts actual RE-renders (mount doesn't count), so the first
+  // logged change is correctly labeled "#1", not "#2".
   const renderCount = useRef(0);
 
   useEffect(() => {
     if (!enabled) return;
 
-    renderCount.current += 1;
-
     if (previousProps.current) {
+      renderCount.current += 1;
+
       const allKeys = new Set([
         ...Object.keys(previousProps.current),
         ...Object.keys(props),
@@ -122,16 +150,22 @@ function logChanges(
   renderCount: number,
   changes: ChangeEntry[]
 ): void {
-  // Guard for non-browser / non-console environments (SSR, some test runners).
-  // eslint-disable-next-line no-console
-  if (typeof console === 'undefined' || !console.group) return;
+  // Guard for non-browser / non-console environments (SSR, some test
+  // runners). Check the actual methods we call below, not a stand-in.
+  if (
+    typeof console === 'undefined' ||
+    !console.groupCollapsed ||
+    !console.groupEnd ||
+    !console.log
+  ) {
+    return;
+  }
 
   const referenceOnlyCount = changes.filter((c) => c.referenceOnly).length;
   const label = `%c🔄 ${name} re-rendered%c (#${renderCount}) — ${changes.length} prop${
     changes.length === 1 ? '' : 's'
   } changed${referenceOnlyCount > 0 ? `, ${referenceOnlyCount} reference-only` : ''}`;
 
-  // eslint-disable-next-line no-console
   console.groupCollapsed(
     label,
     'color: #e06c75; font-weight: bold;',
@@ -140,7 +174,6 @@ function logChanges(
 
   changes.forEach(({ key, before, after, referenceOnly }) => {
     if (referenceOnly) {
-      // eslint-disable-next-line no-console
       console.log(
         `%c${key}%c — same value, new reference (deep-equal)`,
         'font-weight: bold;',
@@ -150,11 +183,9 @@ function logChanges(
         after
       );
     } else {
-      // eslint-disable-next-line no-console
       console.log(`%c${key}%c:`, 'font-weight: bold;', 'color: inherit;', before, '→', after);
     }
   });
 
-  // eslint-disable-next-line no-console
   console.groupEnd();
 }
