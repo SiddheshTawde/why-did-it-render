@@ -1,6 +1,6 @@
 {
   "name": "@siddheshtawde/why-did-it-render",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A tiny dev-only React hook that logs exactly which props changed and caused a re-render — no heavy profiler required.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -49,9 +49,6 @@
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   },
   "repository": {
     "type": "git",
