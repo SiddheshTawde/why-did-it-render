@@ -1,0 +1,6 @@
+{
+  "name": "@sidd/why-did-it-render",
+  "version": "1.0.1",
+  "license": "MIT",
+  "exports": "./src/index.ts"
+}
